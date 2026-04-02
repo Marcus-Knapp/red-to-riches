@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Red to Riches – Clean UI</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { margin:0; font-family:Arial, sans-serif; background:#ffffff; color:#222; }
+  header { background:#ffffff; border-bottom:3px solid #e60023; padding:15px; text-align:center; }
+  header img { max-height:50px; }
+  h1 { margin:5px 0; color:#e60023; }
+
+  .container { padding:20px; max-width:1200px; margin:auto; }
+  .grid { display:grid; grid-template-columns:2fr 1fr; gap:20px; }
+  @media(max-width:900px){ .grid { grid-template-columns:1fr; } }
+
+  .card {
+    background:#fff;
+    border-radius:16px;
+    padding:20px;
+    box-shadow:0 4px 20px rgba(0,0,0,0.08);
+  }
+
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:12px; border-bottom:1px solid #eee; }
+  th { text-align:left; color:#e60023; }
+
+  tr:hover { background:#fafafa; }
+
+  .rank1 { background:#fff5f5; }
+  .rank2 { background:#fafafa; }
+  .rank3 { background:#fffaf5; }
+
+  .tier1 { color:#999; }
+  .tier2 { color:#0077cc; }
+  .tier3 { color:#e60023; font-weight:bold; }
+
+  select {
+    width:100%;
+    padding:10px;
+    border-radius:8px;
+    border:1px solid #ddd;
+    margin-bottom:10px;
+  }
+
+  .progress {
+    height:8px;
+    background:#eee;
+    border-radius:10px;
+    overflow:hidden;
+    margin:10px 0;
+  }
+
+  .bar {
+    height:8px;
+    background:#e60023;
+  }
+
+  .big { font-size:28px; font-weight:bold; color:#e60023; }
+
+  .site-box p {
+    margin:5px 0;
+    padding:8px;
+    background:#fafafa;
+    border-radius:8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="logo.png" alt="Read Motor Group">
+  <h1>Red to Riches</h1>
+</header>
+
+<div class="container">
+
+  <div class="grid">
+
+    <div class="card">
+      <h2>Leaderboard</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Manager</th><th>Site</th><th>Revenue</th><th>Points</th><th>Tier</th></tr>
+        </thead>
+        <tbody id="board"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Performance</h2>
+      <select id="manager"></select>
+      <div id="stats"></div>
+      <div class="progress"><div id="bar" class="bar"></div></div>
+      <canvas id="chart"></canvas>
+    </div>
+
+  </div>
+
+  <div class="card" style="margin-top:20px;">
+    <h2>Site Performance</h2>
+    <div id="sites" class="site-box"></div>
+  </div>
+
+</div>
+
+<script>
+const SHEET_URL = "PASTE_YOUR_CSV_URL_HERE";
+const POINTS = {"Tyres":10,"Brakes":15,"Battery":10,"Suspension":20,"Air Conditioning":10,"Major Repair":30};
+
+function tier(r){
+  if(r<=2000) return {n:"Tier 1",m:1,p:r/2000,c:"tier1"};
+  if(r<=5000) return {n:"Tier 2",m:1.5,p:(r-2000)/3000,c:"tier2"};
+  return {n:"Tier 3",m:2,p:1,c:"tier3"};
+}
+
+function parse(t){
+  return t.split("\n").slice(1).map(r=>{
+    let c=r.split(",");
+    return {m:c[1],s:c[2],j:c[3],rev:+c[4]};
+  }).filter(x=>x.m && x.rev);
+}
+
+let chart;
+
+function process(data){
+  let m={}, s={};
+
+  data.forEach(e=>{
+    if(!m[e.m]) m[e.m]={rev:0,pts:0,site:e.s,jobs:{}};
+    let p=POINTS[e.j]||0;
+    m[e.m].rev+=e.rev;
+    m[e.m].pts+=p;
+    m[e.m].jobs[e.j]=(m[e.m].jobs[e.j]||0)+1;
+    s[e.s]=(s[e.s]||0)+e.rev;
+  });
+
+  let arr=Object.keys(m).map(n=>{
+    let t=tier(m[n].rev);
+    return {name:n,site:m[n].site,rev:m[n].rev,pts:m[n].pts*t.m,tier:t.n,prog:t.p,cls:t.c,jobs:m[n].jobs};
+  }).sort((a,b)=>b.pts-a.pts);
+
+  render(arr);
+  renderManagers(arr);
+  renderSites(s);
+}
+
+function render(d){
+  let el=document.getElementById("board"); el.innerHTML="";
+  d.forEach((r,i)=>{
+    let tr=document.createElement("tr");
+    if(i===0) tr.classList.add("rank1");
+    if(i===1) tr.classList.add("rank2");
+    if(i===2) tr.classList.add("rank3");
+
+    tr.innerHTML=`<td>${i+1}</td><td>${r.name}</td><td>${r.site}</td><td>£${r.rev}</td><td>${r.pts.toFixed(0)}</td><td class="${r.cls}">${r.tier}</td>`;
+    el.appendChild(tr);
+  });
+}
+
+function renderManagers(d){
+  let sel=document.getElementById("manager"); sel.innerHTML="";
+  d.forEach(x=>{
+    let o=document.createElement("option"); o.value=x.name; o.text=x.name; sel.appendChild(o);
+  });
+  sel.onchange=()=>show(d.find(x=>x.name===sel.value));
+  show(d[0]);
+}
+
+function show(d){
+  document.getElementById("stats").innerHTML=`<div class='big'>£${d.rev}</div>${d.pts.toFixed(0)} pts<br>${d.tier}`;
+  document.getElementById("bar").style.width=(d.prog*100)+"%";
+
+  if(chart) chart.destroy();
+  chart=new Chart(document.getElementById("chart"),{
+    type:"bar",
+    data:{labels:Object.keys(d.jobs),datasets:[{data:Object.values(d.jobs)}]}
+  });
+}
+
+function renderSites(s){
+  let el=document.getElementById("sites"); el.innerHTML="";
+  Object.keys(s).sort((a,b)=>s[b]-s[a]).forEach(k=>{
+    el.innerHTML+=`<p>${k}: £${s[k]}</p>`;
+  });
+}
+
+async function fetchData(){
+  let r=await fetch(SHEET_URL);
+  let t=await r.text();
+  process(parse(t));
+}
+
+setInterval(fetchData,30000);
+fetchData();
+</script>
+
+</body>
+</html>
