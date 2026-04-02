@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Red to Riches Elite</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { margin:0; font-family:Arial; background:#0b0b0b; color:white; overflow-x:hidden; }
+header { background:#000; padding:15px; text-align:center; }
+header img { max-height:50px; }
+h1 { color:#ff2e2e; margin:5px; }
+.container { padding:15px; }
+.grid { display:grid; grid-template-columns:2fr 1fr; gap:15px; }
+@media(max-width:900px){ .grid { grid-template-columns:1fr; } }
+.card { background:#1a1a1a; padding:15px; border-radius:12px; box-shadow:0 0 20px rgba(255,0,0,0.2); }
+table { width:100%; border-collapse: collapse; }
+th, td { padding:10px; }
+th { background:#ff2e2e; }
+tr:hover { transform:scale(1.02); }
+.gold { background:#ffd70033; }
+.silver { background:#c0c0c033; }
+.bronze { background:#cd7f3233; }
+.tier1 { color:#aaa; }
+.tier2 { color:#4da3ff; }
+.tier3 { color:#ffd700; font-weight:bold; }
+.progress { background:#333; border-radius:10px; overflow:hidden; height:10px; }
+.bar { height:10px; background:#ff2e2e; }
+.big { font-size:26px; font-weight:bold; }
+.alert { background:#ff2e2e; padding:10px; margin:10px 0; border-radius:8px; display:none; }
+</style>
+</head>
+<body>
+
+<header>
+<img src="logo.png">
+<h1>🔥 Red to Riches ELITE</h1>
+</header>
+
+<div class="container">
+
+<div id="alert" class="alert"></div>
+
+<div class="grid">
+
+<div class="card">
+<h2>🏆 Leaderboard</h2>
+<table>
+<thead><tr><th>#</th><th>Name</th><th>Site</th><th>£</th><th>Pts</th><th>Tier</th></tr></thead>
+<tbody id="board"></tbody>
+</table>
+</div>
+
+<div class="card">
+<h2>📊 Performance</h2>
+<select id="manager"></select>
+<div id="stats"></div>
+<div class="progress"><div id="bar" class="bar"></div></div>
+<canvas id="chart"></canvas>
+</div>
+
+</div>
+
+<div class="card" style="margin-top:15px;">
+<h2>🏢 Site Battle</h2>
+<div id="sites"></div>
+</div>
+
+</div>
+
+<script>
+const SHEET_URL="PASTE_YOUR_CSV_URL_HERE";
+const POINTS={"Tyres":10,"Brakes":15,"Battery":10,"Suspension":20,"Air Conditioning":10,"Major Repair":30};
+let lastLeaders={};
+
+function tier(r){
+if(r<=2000) return {n:"Tier 1",m:1,p:r/2000};
+if(r<=5000) return {n:"Tier 2",m:1.5,p:(r-2000)/3000};
+return {n:"Tier 3",m:2,p:1};
+}
+
+function parse(t){
+return t.split("\n").slice(1).map(r=>{
+let c=r.split(",");
+return {m:c[1],s:c[2],j:c[3],rev:+c[4]};
+}).filter(x=>x.m && x.rev);
+}
+
+let chart;
+
+function process(data){
+let m={}, s={};
+
+data.forEach(e=>{
+if(!m[e.m]) m[e.m]={rev:0,pts:0,site:e.s,jobs:{}};
+let p=POINTS[e.j]||0;
+m[e.m].rev+=e.rev;
+m[e.m].pts+=p;
+m[e.m].jobs[e.j]=(m[e.m].jobs[e.j]||0)+1;
+s[e.s]=(s[e.s]||0)+e.rev;
+});
+
+let arr=Object.keys(m).map(n=>{
+let t=tier(m[n].rev);
+return {name:n,site:m[n].site,rev:m[n].rev,pts:m[n].pts*t.m,tier:t.n,prog:t.p,jobs:m[n].jobs};
+}).sort((a,b)=>b.pts-a.pts);
+
+render(arr);
+renderManagers(arr);
+renderSites(s);
+checkAlerts(arr);
+}
+
+function render(d){
+let el=document.getElementById("board"); el.innerHTML="";
+d.forEach((r,i)=>{
+let tr=document.createElement("tr");
+if(i===0) tr.classList.add("gold");
+if(i===1) tr.classList.add("silver");
+if(i===2) tr.classList.add("bronze");
+tr.innerHTML=`<td>${i+1}</td><td>${r.name}</td><td>${r.site}</td><td>£${r.rev}</td><td>${r.pts.toFixed(0)}</td><td>${r.tier}</td>`;
+el.appendChild(tr);
+});
+}
+
+function renderManagers(d){
+let sel=document.getElementById("manager"); sel.innerHTML="";
+d.forEach(x=>{ let o=document.createElement("option"); o.value=x.name; o.text=x.name; sel.appendChild(o); });
+sel.onchange=()=>show(d.find(x=>x.name===sel.value));
+show(d[0]);
+}
+
+function show(d){
+document.getElementById("stats").innerHTML=`<div class='big'>£${d.rev}</div>${d.pts.toFixed(0)} pts<br>${d.tier}`;
+document.getElementById("bar").style.width=(d.prog*100)+"%";
+if(chart) chart.destroy();
+chart=new Chart(document.getElementById("chart"),{type:"bar",data:{labels:Object.keys(d.jobs),datasets:[{data:Object.values(d.jobs)}]}});
+}
+
+function renderSites(s){
+let el=document.getElementById("sites"); el.innerHTML="";
+Object.keys(s).sort((a,b)=>s[b]-s[a]).forEach(k=>{
+el.innerHTML+=`<p>${k}: £${s[k]}</p>`;
+});
+}
+
+function checkAlerts(data){
+let alert=document.getElementById("alert");
+let top=data[0];
+if(!lastLeaders[top.name]){
+alert.style.display='block';
+alert.innerText=`🔥 ${top.name} is now leading!`;
+setTimeout(()=>alert.style.display='none',5000);
+lastLeaders[top.name]=true;
+}
+if(top.tier==="Tier 3"){
+alert.style.display='block';
+alert.innerText=`🏆 ${top.name} hit Tier 3!`;
+}
+}
+
+async function fetchData(){
+let r=await fetch(SHEET_URL);
+let t=await r.text();
+process(parse(t));
+}
+
+setInterval(fetchData,30000);
+fetchData();
+
+// TV MODE SCROLL
+setInterval(()=>window.scrollBy(0,1),100);
+</script>
+
+</body>
+</html>
